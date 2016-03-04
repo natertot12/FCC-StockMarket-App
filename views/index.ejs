@@ -1,0 +1,169 @@
+<html>
+<head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  <script src="https://code.highcharts.com/stock/highstock.js"></script>
+  <script src="https://code.highcharts.com/stock/modules/exporting.js"></script>
+  <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+  <script>
+    $(document).ready(function() {
+      var des;
+      var socket = io.connect('http://timestamp-natertot12.c9users.io:8080/');
+
+      var currentAmount = 1;
+      var currentArray = ["GOOG"];
+      var addedSymbol = "";
+
+      function loadGraph() {
+        var seriesOptions = [],
+          seriesCounter = 0,
+          names = currentArray;
+        function createChart() {
+          $('#highchart').highcharts('StockChart', {
+            rangeSelector: {
+              selected: 4
+            },
+            yAxis: {
+              labels: {
+                formatter: function() {
+                  return (this.value > 0 ? ' + ' : '') + this.value + '%';
+                }
+              },
+              plotLines: [{
+                value: 0,
+                width: 2,
+                color: 'silver'
+              }]
+            },
+            plotOptions: {
+              series: {
+                compare: 'percent'
+              }
+            },
+            tooltip: {
+              pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y}</b> ({point.change}%)<br/>',
+              valueDecimals: 2
+            },
+            series: seriesOptions
+          });
+        }
+        $.each(names, function(i, name) {
+          var url = 'https://www.quandl.com/api/v3/datasets/WIKI/' + name + '.json?api_key=U6-MhpspPQ5xXTRTNhEV';
+          $.ajax({
+             url: url,
+             dataType: 'json',
+             success: function( data ) {
+            var parsedData = [];
+            for (var a = data.dataset.data.length - 1; a >= 0; a--) {
+              var form = [
+                (new Date(data.dataset.data[a][0]).getTime()),
+                data.dataset.data[a][4]
+              ];
+              //console.log(form);
+              parsedData.push(form);
+            }
+            seriesOptions[i] = {
+              name: name,
+              data: parsedData
+            };
+            seriesCounter += 1;
+
+            if (seriesCounter === names.length) {
+              createChart();
+            }
+             },
+             error: function( data ) {
+                //alert("The last stock symbol added doesn't work...");
+            }
+          });
+        });
+      }
+
+      function change() {
+        socket.on('chart', function(data) {
+          currentArray = data;
+          loadGraph();
+          $("#newSym").empty();
+          for(var a = 1; a < currentArray.length; a++) {
+            currentAmount += 1;
+            $("#newSym").append('<div class="col-sm-3 well"><input type="button" id="removebtn' + currentAmount + '" class="removebtn btn btn-danger" value="X"/><h3 class="text-center">' + currentArray[a] + '</h3></div>');
+          }
+          socket.emit('recieved', data);
+        });
+      }
+      change();
+
+      function update(array) {
+        var addedTerm = array[array.length - 1];
+        var url = 'https://www.quandl.com/api/v3/datasets/WIKI/' + addedTerm + '.json?api_key=U6-MhpspPQ5xXTRTNhEV';
+        $.ajax({
+             url: url,
+             dataType: 'json',
+             success: function(data) {
+                var parsedData = [];
+                for (var a = data.dataset.data.length - 1; a >= 0; a--) {
+                  var form = [
+                    (new Date(data.dataset.data[a][0]).getTime()),
+                    data.dataset.data[a][4]
+                  ];
+                  parsedData.push(form);
+                }
+                socket.emit('change', array);
+                socket.emit('newTerm', parsedData);
+                //console.log("Sent new term");
+             }
+        });
+      }
+
+      $("#add").click(function() {
+        var addedSymbol = $("#addVal").val().toUpperCase();
+        if (currentArray.indexOf(addedSymbol) > -1) {
+          alert("That symbol already exists...")
+        } else if (addedSymbol.length > 6) {
+          alert("That symbol is too big...");
+        } else if (!/([A-Z]){1,6}/g.test(addedSymbol)) {
+          alert("There is a problem with that symbol...");
+        } else {
+          currentArray.push(addedSymbol);
+          currentAmount += 1;
+          $("#newSym").append('<div class="col-sm-3 well"><input type="button" id="removebtn' + currentAmount + '" class="removebtn btn btn-danger" value="X"/><h3 class="text-center">' + addedSymbol + '</h3></div>');
+        }
+        update(currentArray);
+        change();
+      });
+
+      $('#row').on("click", ".removebtn", function() {
+        var item = $(this).find("h3").val();
+        var index = currentArray.indexOf(item);
+        currentArray.splice(index, 1);
+        $(this).parent().remove();
+        update(currentArray);
+        change();
+      });
+    });
+  </script>
+</head>
+<body>
+  <div id="highchart" style="height: 400px; min-width: 310px"></div>
+  <h3 id="description">asdf</h3>
+
+  <div id="stocks" class="container">
+    <div id="row" class="row">
+      <div class="col-sm-3 well">
+        <form class="form-group">
+          <fieldset>
+            <input type="button" id="add" class="btn btn-secondary center-block" value="+" />
+            <br>
+            <input id="addVal" type="text" class="form-group" value="GOOG" required/>
+          </fieldset>
+        </form>
+      </div>
+      <div class="col-sm-3 well">
+        <h3 class="text-center">GOOG</h3>
+      </div>
+      <div id="newSym">
+      </div>
+    </div>
+  </div>
+</body>
+</html>
